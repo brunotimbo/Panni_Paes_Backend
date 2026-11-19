@@ -1,103 +1,195 @@
+
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
+
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
-// configuração do DB
+// CONEXÃO COM O BANCO
 const LINK_DO_BANCO = process.env.MONGO_URI;
 
-//inicializa conexão com o servidor do mongodb
 mongoose.connect(LINK_DO_BANCO)
     .then(function () {
-        console.log("Conectado com sucesso ao MongoDB na núvem");
+        console.log("Conectado com sucesso ao MongoDB na nuvem");
     })
     .catch(function (erro) {
-        console.log("Erro ao conectar ao MongoDB: ", erro)
+        console.log("Erro ao conectar ao MongoDB:", erro);
     });
 
-// modelo de dados (schema): modelo de produto no db
+// SCHEMA DO PRODUTO
 const ProdutoSchema = new mongoose.Schema({
-    nome: {type: String, required: true},
-    categoria: {type: String, required: true},
-    preco: {type: Number, required: true},
-    imagem: {type: String, required: true},
-    descricao: {type: String, required: true}
+    nome: { type: String, required: true },
+    categoria: { type: String, required: true },
+    preco: { type: Number, required: true },
+    imagem: { type: String, required: true },
+    descricao: { type: String, required: true }
 });
 
-// modelo operacional do schema
-const Produto = mongoose.model('Produto', ProdutoSchema);
+const Produtos = mongoose.model('Produtos', ProdutoSchema);
 
-// GET
-app.get('/produtos', function (requisicao, response) {
-    Produto.find()
-        .then(function (listaDeProdutos) {
-            return response.json(listaDeProdutos);
-        })
-        .catch(function (erro) {
-            return response.status(500).json({erro: "Erro ao buscar dados do banco"});
+// ======================================
+// ROTA AUTOMÁTICA PARA CADASTRAR TESTE
+// ======================================
+
+app.get('/produto/cadastrar', async function (requisicao, response) {
+    try {
+        const novoProduto = await Produtos.create({
+            nome: "Produto de Teste",
+            categoria: "Eletrônicos",
+            preco: 199.90,
+            imagem: "https://placehold.co/300x300",
+            descricao: "Este é um produto cadastrado automaticamente para teste."
         });
-});
 
-// POST
-app.post('/produtos', function (requisicao, response) {
-    const dadosRecebidos = requisicao.body;
-    Produto.create({
-        nome: dadosRecebidos.nome,
-        categoria: dadosRecebidos.categoria,
-        preco: dadosRecebidos.preco,
-        imagem: dadosRecebidos.imagem,
-        descricao: dadosRecebidos.descricao
-    })
-        .then(function (novoProduto) {
-            return response.status(201).json(novoProduto);
-        })
-        .catch( function (erro) {
-            return response.status(400).json({erro: "Erro ao salvar produto no banco"});
+        return response.status(201).json({
+            mensagem: "Produto cadastrado com sucesso!",
+            produto: novoProduto
         });
+
+    } catch (erro) {
+        return response.status(500).json({
+            erro: "Erro ao cadastrar produto de teste",
+            detalhes: erro.message
+        });
+    }
 });
 
-// PUT
-app.put('/produtos/:nomeParametro', function (requisicao, response) {
-    const nomeParametro = decodeURIComponent(requisicao.params.nomeParametro);
-    const dadosNovos = requisicao.body;
+// ======================================
+// GET - LISTAR PRODUTOS
+// ======================================
 
-    Produto.findOneAndUpdate(
-        {nome: {$regex: new RegExp("^" + nomeParametro + "$", "i")}},
-        {nome: dadosNovos.nome, categoria: dadosNovos.categoria, preco: dadosNovos.preco, imagem: dadosNovos.imagem, descricao: dadosNovos.descricao},
-        {new: true}
-    )
-        .then(function (produtoAtualizado) {
-            if (!produtoAtualizado) {
-                return response.status(404).json({erro: "Produto não encontrado para atualizar"});
+app.get('/produtos', async function (requisicao, response) {
+    try {
+        const listaDeProdutos = await Produtos.find();
+
+        return response.json(listaDeProdutos);
+
+    } catch (erro) {
+        return response.status(500).json({
+            erro: "Erro ao buscar dados do banco"
+        });
+    }
+});
+
+// ======================================
+// POST - CADASTRAR PRODUTO
+// ======================================
+
+app.post('/produtos', async function (requisicao, response) {
+    try {
+        const dadosRecebidos = requisicao.body;
+
+        const novoProduto = await Produtos.create({
+            nome: dadosRecebidos.nome,
+            categoria: dadosRecebidos.categoria,
+            preco: dadosRecebidos.preco,
+            imagem: dadosRecebidos.imagem,
+            descricao: dadosRecebidos.descricao
+        });
+
+        return response.status(201).json(novoProduto);
+
+    } catch (erro) {
+        return response.status(400).json({
+            erro: "Erro ao salvar produto no banco"
+        });
+    }
+});
+
+// ======================================
+// PUT - ATUALIZAR PRODUTO
+// ======================================
+
+app.put('/produtos/:nomeParametro', async function (requisicao, response) {
+    try {
+        const nomeParametro = decodeURIComponent(
+            requisicao.params.nomeParametro
+        );
+
+        const dadosNovos = requisicao.body;
+
+        const produtoAtualizado = await Produtos.findOneAndUpdate(
+            {
+                nome: {
+                    $regex: "^" + nomeParametro.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "$",
+                    $options: "i"
+                }
+            },
+            {
+                nome: dadosNovos.nome,
+                categoria: dadosNovos.categoria,
+                preco: dadosNovos.preco,
+                imagem: dadosNovos.imagem,
+                descricao: dadosNovos.descricao
+            },
+            {
+                new: true,
+                runValidators: true
             }
-        })
+        );
 
-});
+        if (!produtoAtualizado) {
+            return response.status(404).json({
+                erro: "Produto não encontrado para atualizar"
+            });
+        }
 
-// DELETE
-app.delete('/produtos/:nomeParametro', function (requisicao, response) {
-    const nomeParametro = decodeURIComponent(requisicao.params.nomeParametro);
-    Produto.findOneAndDelete({nome: {$regex: new RegExp("^" + nomeParametro + "$", "i")}})
-        .then(function (produtoDeletado) {
-            if (!produtoDeletado) {
-                return response.status(404).json({erro: "Produto não encontrado para deletar."});
-            }
-            return response.status(204).send();
-        })
-        .catch(function (erro) {
-            return response.status(500).json({erro: "Erro ao processar a exclusão no banco."});
+        return response.json({
+            mensagem: "Produto atualizado com sucesso!",
+            produto: produtoAtualizado
         });
+
+    } catch (erro) {
+        return response.status(500).json({
+            erro: "Erro ao atualizar produto"
+        });
+    }
 });
 
+// ======================================
+// DELETE - EXCLUIR PRODUTO
+// ======================================
+
+app.delete('/produtos/:nomeParametro', async function (requisicao, response) {
+    try {
+        const nomeParametro = decodeURIComponent(
+            requisicao.params.nomeParametro
+        );
+
+        const produtoDeletado = await Produtos.findOneAndDelete({
+            nome: {
+                $regex: "^" + nomeParametro.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "$",
+                $options: "i"
+            }
+        });
+
+        if (!produtoDeletado) {
+            return response.status(404).json({
+                erro: "Produto não encontrado para deletar."
+            });
+        }
+
+        return response.status(204).send();
+
+    } catch (erro) {
+        return response.status(500).json({
+            erro: "Erro ao processar a exclusão no banco."
+        });
+    }
+});
+
+// ======================================
+// INICIAR SERVIDOR
+// ======================================
 
 const PORTA = 3000;
+
 app.listen(PORTA, function () {
-    console.log(`Backend rodando e pronto em http://localhost:${PORTA}`)
-})
-
-
+    console.log(`Backend rodando em http://localhost:${PORTA}`);
+});
